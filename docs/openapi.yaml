@@ -1,21 +1,21 @@
+
 openapi: 3.1.0
 info:
-  title: Brigade API
-  version: 1.0.0
-  description: REST API for Brigade restaurant administrators (Laravel + Sanctum).
+  title: RestaurantAI-Brigade API (V2)
+  version: 2.0.0
+  description: Finalized OpenAPI for RestaurantAI-Brigade API V2.
 servers:
   - url: http://127.0.0.1:8000/api
-    description: Local development server
-
+security:
+  - bearerAuth: []
 tags:
   - name: Auth
-    description: Authentication endpoints
+  - name: Profile
   - name: Categories
-    description: Category management for the authenticated restaurant
-  - name: Plats
-    description: Plat management for the authenticated restaurant
-  - name: Category-Plats Association
-    description: Attach existing plats to a category
+  - name: Plates
+  - name: Ingredients
+  - name: Recommendations
+  - name: Admin Stats
 
 components:
   securitySchemes:
@@ -29,10 +29,40 @@ components:
       name: id
       in: path
       required: true
-      description: Resource identifier
       schema:
         type: integer
-        example: 1
+    PlateIdParam:
+      name: plate_id
+      in: path
+      required: true
+      schema:
+        type: integer
+
+  responses:
+    Unauthorized:
+      description: Unauthenticated
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UnauthenticatedError'
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ForbiddenError'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NotFoundError'
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
 
   schemas:
     User:
@@ -40,119 +70,129 @@ components:
       properties:
         id:
           type: integer
-          example: 1
         name:
           type: string
-          example: Admin One
         email:
           type: string
           format: email
-          example: admin@brigade.test
-        created_at:
+        role:
           type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-
-    Restaurant:
-      type: object
-      properties:
-        id:
-          type: integer
-          example: 1
-        name:
-          type: string
-          example: Resto One
-        user_id:
-          type: integer
-          example: 1
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
+          enum: [client, admin]
+        dietary_tags:
+          type: array
+          items:
+            type: string
+            enum: [vegan, no_sugar, no_cholesterol, gluten_free, no_lactose]
 
     Category:
       type: object
       properties:
         id:
           type: integer
-          example: 10
         name:
           type: string
-          example: Burgers
+          maxLength: 100
         description:
           type: string
           nullable: true
-          example: Signature burgers
-        restaurant_id:
-          type: integer
-          example: 1
-        created_at:
+        color:
           type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
+          nullable: true
+        is_active:
+          type: boolean
 
-    Plat:
+    Ingredient:
       type: object
       properties:
         id:
           type: integer
-          example: 15
         name:
           type: string
-          example: Burger Maison
+        tags:
+          type: array
+          items:
+            type: string
+            enum: [contains_meat, contains_sugar, contains_cholesterol, contains_gluten, contains_lactose]
+
+    Plate:
+      type: object
+      properties:
+        id:
+          type: integer
+        category_id:
+          type: integer
+        name:
+          type: string
         description:
           type: string
           nullable: true
-          example: Double steak, cheddar
         price:
           type: string
-          example: "89.90"
-        stock:
-          type: integer
-          example: 10
-        category_id:
-          type: integer
-          example: 10
-        restaurant_id:
-          type: integer
-          example: 1
-        created_at:
+        image:
           type: string
-          format: date-time
-        updated_at:
+          nullable: true
+        is_available:
+          type: boolean
+        category:
+          $ref: '#/components/schemas/Category'
+        ingredients:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ingredient'
+
+    ConflictTag:
+      type: object
+      properties:
+        dietary_tag:
           type: string
-          format: date-time
+          enum: [vegan, no_sugar, no_cholesterol, gluten_free, no_lactose]
+        ingredient_tag:
+          type: string
+          enum: [contains_meat, contains_sugar, contains_cholesterol, contains_gluten, contains_lactose]
+
+    Recommendation:
+      type: object
+      properties:
+        plate:
+          $ref: '#/components/schemas/Plate'
+        score:
+          type: number
+          nullable: true
+        label:
+          type: string
+          nullable: true
+        warning_message:
+          type: string
+          nullable: true
+        conflicting_tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConflictTag'
+        status:
+          type: string
+          enum: [processing, ready, failed]
 
     RegisterRequest:
       type: object
-      required: [name, email, password, password_confirmation, restaurant_name]
+      required: [name, email, password, password_confirmation, role]
       properties:
         name:
           type: string
-          maxLength: 255
-          example: Admin One
         email:
           type: string
           format: email
-          maxLength: 255
-          example: admin@brigade.test
         password:
           type: string
-          minLength: 8
-          example: password123
         password_confirmation:
           type: string
-          example: password123
-        restaurant_name:
+        role:
           type: string
-          maxLength: 255
-          example: Resto One
+          enum: [client, admin]
+        dietary_tags:
+          type: array
+          items:
+            type: string
+            enum: [vegan, no_sugar, no_cholesterol, gluten_free, no_lactose]
 
     LoginRequest:
       type: object
@@ -161,10 +201,18 @@ components:
         email:
           type: string
           format: email
-          example: admin@brigade.test
         password:
           type: string
-          example: password123
+
+    UpdateProfileRequest:
+      type: object
+      required: [dietary_tags]
+      properties:
+        dietary_tags:
+          type: array
+          items:
+            type: string
+            enum: [vegan, no_sugar, no_cholesterol, gluten_free, no_lactose]
 
     StoreCategoryRequest:
       type: object
@@ -172,12 +220,16 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          example: Burgers
+          maxLength: 100
         description:
           type: string
           nullable: true
-          example: Signature burgers
+        color:
+          type: string
+          nullable: true
+          pattern: '^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$'
+        is_active:
+          type: boolean
 
     UpdateCategoryRequest:
       type: object
@@ -185,234 +237,120 @@ components:
       properties:
         name:
           type: string
-          maxLength: 255
-          example: Burgers Premium
+          maxLength: 100
         description:
           type: string
           nullable: true
-          example: Updated description
+        color:
+          type: string
+          nullable: true
+          pattern: '^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$'
+        is_active:
+          type: boolean
 
-    StorePlatRequest:
+    StorePlateRequest:
       type: object
-      required: [name, price, stock, category_id]
+      required: [name, price, category_id]
       properties:
         name:
           type: string
-          maxLength: 255
-          example: Burger Maison
+          maxLength: 100
         description:
           type: string
           nullable: true
-          example: Double steak, cheddar
         price:
           type: number
-          minimum: 0
-          example: 89.9
-        stock:
-          type: integer
-          minimum: 0
-          example: 10
-        category_id:
-          type: integer
-          example: 10
-
-    UpdatePlatRequest:
-      type: object
-      required: [name, price, stock, category_id]
-      properties:
-        name:
-          type: string
-          maxLength: 255
-          example: Burger Maison XL
-        description:
+          exclusiveMinimum: 0
+        image:
           type: string
           nullable: true
-          example: Triple steak, cheddar
-        price:
-          type: number
-          minimum: 0
-          example: 109.9
-        stock:
-          type: integer
-          minimum: 0
-          example: 8
+        is_available:
+          type: boolean
         category_id:
           type: integer
-          example: 10
-
-    AttachPlatsToCategoryRequest:
-      type: object
-      required: [plat_ids]
-      properties:
-        plat_ids:
+        ingredient_ids:
           type: array
-          minItems: 1
           items:
             type: integer
-          example: [15, 16, 17]
 
-    RegisterResponse:
+    UpdatePlateRequest:
       type: object
       properties:
-        message:
+        name:
           type: string
-          example: Utilisateur enregistre avec succes.
-        user:
-          $ref: '#/components/schemas/User'
-        restaurant:
-          $ref: '#/components/schemas/Restaurant'
-        token:
+          maxLength: 100
+        description:
           type: string
-          example: 1|abcdefghijklmno
+          nullable: true
+        price:
+          type: number
+          exclusiveMinimum: 0
+        image:
+          type: string
+          nullable: true
+        is_available:
+          type: boolean
+        category_id:
+          type: integer
+        ingredient_ids:
+          type: array
+          items:
+            type: integer
 
-    LoginResponse:
+    StoreIngredientRequest:
+      type: object
+      required: [name, tags]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        tags:
+          type: array
+          items:
+            type: string
+            enum: [contains_meat, contains_sugar, contains_cholesterol, contains_gluten, contains_lactose]
+
+    UpdateIngredientRequest:
       type: object
       properties:
-        message:
+        name:
           type: string
-          example: Connexion reussie.
-        user:
-          allOf:
-            - $ref: '#/components/schemas/User'
-            - type: object
-              properties:
-                restaurant:
-                  $ref: '#/components/schemas/Restaurant'
-        token:
-          type: string
-          example: 2|abcdefghijklmno
-
-    UserResponse:
-      type: object
-      properties:
-        message:
-          type: string
-          example: Utilisateur authentifie recupere.
-        user:
-          allOf:
-            - $ref: '#/components/schemas/User'
-            - type: object
-              properties:
-                restaurant:
-                  $ref: '#/components/schemas/Restaurant'
+          maxLength: 100
+        tags:
+          type: array
+          items:
+            type: string
+            enum: [contains_meat, contains_sugar, contains_cholesterol, contains_gluten, contains_lactose]
 
     MessageResponse:
       type: object
       properties:
         message:
           type: string
-          example: Operation terminee avec succes.
 
-    CategoryCollectionResponse:
+    AuthResponse:
       type: object
       properties:
         message:
           type: string
-          example: Categories recuperees avec succes.
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/Category'
+        user:
+          $ref: '#/components/schemas/User'
+        token:
+          type: string
 
-    CategoryResourceResponse:
+    ProfileResponse:
       type: object
       properties:
         message:
           type: string
-          example: Categorie recuperee avec succes.
-        data:
-          $ref: '#/components/schemas/Category'
-
-    PlatCollectionResponse:
-      type: object
-      properties:
-        message:
-          type: string
-          example: Plats recuperes avec succes.
-        data:
-          type: array
-          items:
-            allOf:
-              - $ref: '#/components/schemas/Plat'
-              - type: object
-                properties:
-                  category:
-                    $ref: '#/components/schemas/Category'
-
-    PlatResourceResponse:
-      type: object
-      properties:
-        message:
-          type: string
-          example: Plat recupere avec succes.
-        data:
-          allOf:
-            - $ref: '#/components/schemas/Plat'
-            - type: object
-              properties:
-                category:
-                  $ref: '#/components/schemas/Category'
-
-    AttachPlatsSuccessResponse:
-      type: object
-      properties:
-        message:
-          type: string
-          example: Plats associes a la categorie avec succes.
-        data:
-          type: object
-          properties:
-            category:
-              $ref: '#/components/schemas/Category'
-            plats:
-              type: array
-              items:
-                allOf:
-                  - $ref: '#/components/schemas/Plat'
-                  - type: object
-                    properties:
-                      category:
-                        $ref: '#/components/schemas/Category'
-
-    UnauthorizedError:
-      type: object
-      properties:
-        message:
-          type: string
-          example: Unauthenticated.
-
-    ForbiddenError:
-      type: object
-      properties:
-        message:
-          type: string
-          example: This action is unauthorized.
-
-    AttachForbiddenError:
-      type: object
-      properties:
-        message:
-          type: string
-          example: Un ou plusieurs plats ne sont pas autorises pour ce restaurant.
-        invalid_plat_ids:
-          type: array
-          items:
-            type: integer
-          example: [99]
-
-    NotFoundError:
-      type: object
-      properties:
-        message:
-          type: string
-          example: Categorie introuvable.
+        profile:
+          $ref: '#/components/schemas/User'
 
     ValidationError:
       type: object
       properties:
         message:
           type: string
-          example: The given data was invalid.
         errors:
           type: object
           additionalProperties:
@@ -420,11 +358,41 @@ components:
             items:
               type: string
 
+    UnauthenticatedError:
+      type: object
+      properties:
+        message:
+          type: string
+
+    ForbiddenError:
+      type: object
+      properties:
+        message:
+          type: string
+
+    NotFoundError:
+      type: object
+      properties:
+        message:
+          type: string
+
+    ProcessingRecommendationResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        status:
+          type: string
+          enum: [processing]
+        plate_id:
+          type: integer
+
 paths:
   /register:
     post:
       tags: [Auth]
-      summary: Register a new user and restaurant
+      security: []
+      summary: Register a new user
       requestBody:
         required: true
         content:
@@ -433,22 +401,19 @@ paths:
               $ref: '#/components/schemas/RegisterRequest'
       responses:
         '201':
-          description: Registration successful
+          description: Registered
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RegisterResponse'
+                $ref: '#/components/schemas/AuthResponse'
         '422':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
+          $ref: '#/components/responses/ValidationError'
 
   /login:
     post:
       tags: [Auth]
-      summary: Login and generate a Sanctum token
+      security: []
+      summary: Login and get token
       requestBody:
         required: true
         content:
@@ -457,95 +422,116 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: Login successful
+          description: Logged in
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoginResponse'
+                $ref: '#/components/schemas/AuthResponse'
         '401':
-          description: Invalid credentials
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
+          $ref: '#/components/responses/Unauthorized'
         '422':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
+          $ref: '#/components/responses/ValidationError'
 
   /logout:
     post:
       tags: [Auth]
-      summary: Logout (invalidate current token)
-      security:
-        - bearerAuth: []
+      summary: Logout current token
       responses:
         '200':
-          description: Logout successful
+          description: Logged out
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '401':
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
+          $ref: '#/components/responses/Unauthorized'
 
-  /user:
+  /me:
     get:
       tags: [Auth]
-      summary: Get authenticated user profile
-      security:
-        - bearerAuth: []
+      summary: Get authenticated user
       responses:
         '200':
-          description: User profile
+          description: Current user
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserResponse'
+                type: object
+                properties:
+                  message:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
         '401':
-          description: Unauthenticated
+          $ref: '#/components/responses/Unauthorized'
+
+  /profile:
+    get:
+      tags: [Profile]
+      summary: Get dietary profile
+      responses:
+        '200':
+          description: Profile
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UnauthorizedError'
+                $ref: '#/components/schemas/ProfileResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [Profile]
+      summary: Update dietary profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
 
   /categories:
     get:
       tags: [Categories]
-      summary: List categories for the authenticated restaurant
-      security:
-        - bearerAuth: []
+      summary: List categories
+      parameters:
+        - name: active
+          in: query
+          required: false
+          schema:
+            type: boolean
       responses:
         '200':
           description: Categories list
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CategoryCollectionResponse'
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+                  filters:
+                    type: object
         '401':
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
-        '404':
-          description: Restaurant not found for user
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundError'
-
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
     post:
       tags: [Categories]
-      summary: Create a category for the authenticated restaurant
-      security:
-        - bearerAuth: []
+      summary: Create category (admin only)
       requestBody:
         required: true
         content:
@@ -558,65 +544,44 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CategoryResourceResponse'
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Category'
         '401':
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
-        '404':
-          description: Restaurant not found for user
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundError'
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '422':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
+          $ref: '#/components/responses/ValidationError'
 
   /categories/{id}:
     get:
       tags: [Categories]
-      summary: Get one category
-      security:
-        - bearerAuth: []
+      summary: Get category by id
       parameters:
         - $ref: '#/components/parameters/IdParam'
       responses:
         '200':
-          description: Category found
+          description: Category details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CategoryResourceResponse'
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Category'
         '401':
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
-        '403':
-          description: Forbidden by policy
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ForbiddenError'
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Resource not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundError'
-
+          $ref: '#/components/responses/NotFound'
     put:
       tags: [Categories]
-      summary: Update one category
-      security:
-        - bearerAuth: []
+      summary: Update category (admin only)
       parameters:
         - $ref: '#/components/parameters/IdParam'
       requestBody:
@@ -631,37 +596,23 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CategoryResourceResponse'
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Category'
         '401':
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Forbidden by policy
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ForbiddenError'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundError'
+          $ref: '#/components/responses/NotFound'
         '422':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
-
+          $ref: '#/components/responses/ValidationError'
     delete:
       tags: [Categories]
-      summary: Delete one category
-      security:
-        - bearerAuth: []
+      summary: Delete category (admin only)
       parameters:
         - $ref: '#/components/parameters/IdParam'
       responses:
@@ -672,126 +623,134 @@ paths:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '401':
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Forbidden by policy
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ForbiddenError'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Active plates still linked
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NotFoundError'
+                $ref: '#/components/schemas/MessageResponse'
 
-  /plats:
+  /categories/{id}/plates:
     get:
-      tags: [Plats]
-      summary: List plats for the authenticated restaurant
-      security:
-        - bearerAuth: []
+      tags: [Categories]
+      summary: List plates by category
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - name: include_unavailable
+          in: query
+          required: false
+          schema:
+            type: boolean
       responses:
         '200':
-          description: Plats list
+          description: Category plates
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlatCollectionResponse'
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
         '401':
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Restaurant not found for user
+          $ref: '#/components/responses/NotFound'
+
+  /plates:
+    get:
+      tags: [Plates]
+      summary: List plates
+      parameters:
+        - name: available
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Paginated plates
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NotFoundError'
-
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                  filters:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
     post:
-      tags: [Plats]
-      summary: Create a plat
-      security:
-        - bearerAuth: []
+      tags: [Plates]
+      summary: Create plate (admin only)
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/StorePlatRequest'
+              $ref: '#/components/schemas/StorePlateRequest'
       responses:
         '201':
-          description: Plat created
+          description: Plate created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlatResourceResponse'
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Plate'
         '401':
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
-        '404':
-          description: Restaurant not found for user
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundError'
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '422':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
+          $ref: '#/components/responses/ValidationError'
 
-  /plats/{id}:
+  /plates/{id}:
     get:
-      tags: [Plats]
-      summary: Get one plat
-      security:
-        - bearerAuth: []
+      tags: [Plates]
+      summary: Get plate by id
       parameters:
         - $ref: '#/components/parameters/IdParam'
       responses:
         '200':
-          description: Plat found
+          description: Plate details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlatResourceResponse'
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Plate'
         '401':
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
-        '403':
-          description: Forbidden by policy
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ForbiddenError'
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Resource not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundError'
-
+          $ref: '#/components/responses/NotFound'
     put:
-      tags: [Plats]
-      summary: Update one plat
-      security:
-        - bearerAuth: []
+      tags: [Plates]
+      summary: Update plate (admin only)
       parameters:
         - $ref: '#/components/parameters/IdParam'
       requestBody:
@@ -799,78 +758,101 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdatePlatRequest'
+              $ref: '#/components/schemas/UpdatePlateRequest'
       responses:
         '200':
-          description: Plat updated
+          description: Plate updated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlatResourceResponse'
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Plate'
         '401':
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Forbidden by policy
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ForbiddenError'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/NotFoundError'
+          $ref: '#/components/responses/NotFound'
         '422':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
-
+          $ref: '#/components/responses/ValidationError'
     delete:
-      tags: [Plats]
-      summary: Delete one plat
-      security:
-        - bearerAuth: []
+      tags: [Plates]
+      summary: Delete plate (admin only)
       parameters:
         - $ref: '#/components/parameters/IdParam'
       responses:
         '200':
-          description: Plat deleted
+          description: Plate deleted
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageResponse'
         '401':
-          description: Unauthenticated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UnauthorizedError'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Forbidden by policy
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ForbiddenError'
+          $ref: '#/components/responses/Forbidden'
         '404':
-          description: Resource not found
+          $ref: '#/components/responses/NotFound'
+
+  /ingredients:
+    get:
+      tags: [Ingredients]
+      summary: List ingredients (admin only)
+      parameters:
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Paginated ingredients
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NotFoundError'
-
-  /categories/{id}/plats:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
-      tags: [Category-Plats Association]
-      summary: Attach multiple plats to one category
-      security:
-        - bearerAuth: []
+      tags: [Ingredients]
+      summary: Create ingredient (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreIngredientRequest'
+      responses:
+        '201':
+          description: Ingredient created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Ingredient'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /ingredients/{id}:
+    put:
+      tags: [Ingredients]
+      summary: Update ingredient (admin only)
       parameters:
         - $ref: '#/components/parameters/IdParam'
       requestBody:
@@ -878,37 +860,140 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AttachPlatsToCategoryRequest'
+              $ref: '#/components/schemas/UpdateIngredientRequest'
       responses:
         '200':
-          description: Plats attached successfully
+          description: Ingredient updated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AttachPlatsSuccessResponse'
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Ingredient'
         '401':
-          description: Unauthenticated
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags: [Ingredients]
+      summary: Delete ingredient (admin only)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Ingredient deleted
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UnauthorizedError'
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Forbidden by policy or external plats
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recommendations/analyze/{plate_id}:
+    post:
+      tags: [Recommendations]
+      summary: Launch async recommendation analysis
+      parameters:
+        - $ref: '#/components/parameters/PlateIdParam'
+      responses:
+        '202':
+          description: Analysis queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessingRecommendationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /recommendations:
+    get:
+      tags: [Recommendations]
+      summary: Get recommendation history for authenticated user
+      parameters:
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Paginated recommendations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /recommendations/{plate_id}:
+    get:
+      tags: [Recommendations]
+      summary: Get recommendation for a specific plate
+      parameters:
+        - $ref: '#/components/parameters/PlateIdParam'
+      responses:
+        '200':
+          description: Recommendation processing or ready
           content:
             application/json:
               schema:
                 oneOf:
-                  - $ref: '#/components/schemas/ForbiddenError'
-                  - $ref: '#/components/schemas/AttachForbiddenError'
+                  - $ref: '#/components/schemas/ProcessingRecommendationResponse'
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                      data:
+                        $ref: '#/components/schemas/Recommendation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Category not found
+          $ref: '#/components/responses/NotFound'
+
+  /admin/stats:
+    get:
+      tags: [Admin Stats]
+      summary: Get global system statistics (admin only)
+      responses:
+        '200':
+          description: Statistics
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NotFoundError'
-        '422':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationError'
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      totals:
+                        type: object
+                      recommendations:
+                        type: object
+                      categories:
+                        type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'

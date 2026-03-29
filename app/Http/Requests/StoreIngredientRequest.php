@@ -2,9 +2,11 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Ingredient;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
-class LoginRequest extends FormRequest
+class StoreIngredientRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -13,11 +15,11 @@ class LoginRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $email = $this->input('email');
+        $name = $this->input('name');
 
-        if (is_string($email)) {
+        if (is_string($name)) {
             $this->merge([
-                'email' => mb_strtolower(trim($email)),
+                'name' => trim($name),
             ]);
         }
     }
@@ -28,8 +30,9 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email' => ['required', 'email'],
-            'password' => ['required', 'string'],
+            'name' => ['required', 'string', 'max:100'],
+            'tags' => ['required', 'array'],
+            'tags.*' => ['string', 'distinct', Rule::in(Ingredient::allowedTags())],
         ];
     }
 }

@@ -3,142 +3,117 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\AttachPlatsToCategoryRequest;
 use App\Http\Requests\StoreCategoryRequest;
 use App\Http\Requests\UpdateCategoryRequest;
 use App\Models\Category;
-use App\Models\Plat;
-use App\Models\Restaurant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class CategoryController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $restaurant = $this->resolveRestaurant($request);
+        $active = $this->parseBooleanFilter($request, 'active');
 
         $categories = Category::query()
-            ->where('restaurant_id', $restaurant->id)
-            ->latest()
+            ->when($active !== null, static fn ($query) => $query->where('is_active', $active))
+            ->withCount('plates')
+            ->orderBy('name')
             ->get();
 
         return response()->json([
-            'message' => 'Categories recuperees avec succes.',
+            'message' => 'Categories retrieved successfully.',
             'data' => $categories,
-        ], 200);
+            'filters' => [
+                'active' => $active,
+            ],
+        ]);
     }
 
     public function store(StoreCategoryRequest $request): JsonResponse
     {
-        $restaurant = $this->resolveRestaurant($request);
+        $validated = $request->validated();
 
-        $category = Category::create([
-            ...$request->validated(),
-            'restaurant_id' => $restaurant->id,
+        $category = Category::query()->create([
+            ...$validated,
+            'is_active' => $validated['is_active'] ?? true,
         ]);
 
         return response()->json([
-            'message' => 'Categorie creee avec succes.',
+            'message' => 'Category created successfully.',
             'data' => $category,
         ], 201);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Category $category): JsonResponse
     {
-        $category = Category::findOrFail($id);
-        $this->authorize('view', $category);
-
         return response()->json([
-            'message' => 'Categorie recuperee avec succes.',
-            'data' => $category,
-        ], 200);
+            'message' => 'Category retrieved successfully.',
+            'data' => $category->loadCount('plates'),
+        ]);
     }
 
-    public function update(UpdateCategoryRequest $request, int $id): JsonResponse
+    public function update(UpdateCategoryRequest $request, Category $category): JsonResponse
     {
-        $category = Category::findOrFail($id);
-        $this->authorize('update', $category);
-
         $category->update($request->validated());
 
         return response()->json([
-            'message' => 'Categorie mise a jour avec succes.',
-            'data' => $category->fresh(),
-        ], 200);
+            'message' => 'Category updated successfully.',
+            'data' => $category->fresh()->loadCount('plates'),
+        ]);
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy(Category $category): JsonResponse
     {
-        $category = Category::findOrFail($id);
-        $this->authorize('delete', $category);
+        if ($category->plates()->where('is_available', true)->exists()) {
+            return response()->json([
+                'message' => 'Category cannot be deleted while it contains active plates.',
+            ], 409);
+        }
 
         $category->delete();
 
         return response()->json([
-            'message' => 'Categorie supprimee avec succes.',
-        ], 200);
+            'message' => 'Category deleted successfully.',
+        ]);
     }
 
-    public function attachPlats(AttachPlatsToCategoryRequest $request, int $id): JsonResponse
+    public function plates(Request $request, Category $category): JsonResponse
     {
-        $restaurant = $this->resolveRestaurant($request);
-        $category = Category::find($id);
+        $includeUnavailable = $this->parseBooleanFilter($request, 'include_unavailable') ?? false;
 
-        if (! $category) {
-            return response()->json([
-                'message' => 'Categorie introuvable.',
-            ], 404);
-        }
-
-        $this->authorize('update', $category);
-
-        $platIds = $request->validated('plat_ids');
-
-        $plats = Plat::query()
-            ->whereIn('id', $platIds)
-            ->get();
-
-        $externalPlatIds = $plats
-            ->where('restaurant_id', '!=', $restaurant->id)
-            ->pluck('id')
-            ->values();
-
-        if ($externalPlatIds->isNotEmpty()) {
-            return response()->json([
-                'message' => 'Un ou plusieurs plats ne sont pas autorises pour ce restaurant.',
-                'invalid_plat_ids' => $externalPlatIds->all(),
-            ], 403);
-        }
-
-        Plat::query()
-            ->whereIn('id', $platIds)
-            ->update(['category_id' => $category->id]);
-
-        $updatedPlats = Plat::query()
-            ->whereIn('id', $platIds)
-            ->with('category')
+        $plates = $category->plates()
+            ->when(! $includeUnavailable, static fn ($query) => $query->where('is_available', true))
+            ->orderBy('name')
             ->get();
 
         return response()->json([
-            'message' => 'Plats associes a la categorie avec succes.',
+            'message' => 'Category plates retrieved successfully.',
             'data' => [
-                'category' => $category->fresh(),
-                'plats' => $updatedPlats,
+                'category' => $category,
+                'plates' => $plates,
             ],
-        ], 200);
+            'filters' => [
+                'include_unavailable' => $includeUnavailable,
+            ],
+        ]);
     }
 
-    private function resolveRestaurant(Request $request): Restaurant
+    private function parseBooleanFilter(Request $request, string $key): ?bool
     {
-        $restaurant = $request->user()->restaurant;
-
-        if (! $restaurant) {
-            abort(response()->json([
-                'message' => 'Restaurant introuvable pour cet utilisateur.',
-            ], 404));
+        if (! $request->has($key)) {
+            return null;
         }
 
-        return $restaurant;
+        $value = filter_var($request->query($key), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        if ($value === null) {
+            throw ValidationException::withMessages([
+                $key => ["The {$key} query parameter must be true or false."],
+            ]);
+        }
+
+        return $value;
     }
 }

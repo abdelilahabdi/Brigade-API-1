@@ -1,27 +1,51 @@
 <?php
 
+use App\Http\Controllers\Api\AdminStatsController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
-use App\Http\Controllers\Api\PlatController;
+use App\Http\Controllers\Api\IngredientController;
+use App\Http\Controllers\Api\PlateController;
+use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\RecommendationController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
-Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/user', [AuthController::class, 'user']);
+Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/me', [AuthController::class, 'me']);
+
+    Route::get('/profile', [ProfileController::class, 'show']);
+    Route::put('/profile', [ProfileController::class, 'update']);
 
     Route::get('/categories', [CategoryController::class, 'index']);
-    Route::post('/categories', [CategoryController::class, 'store']);
-    Route::get('/categories/{id}', [CategoryController::class, 'show']);
-    Route::put('/categories/{id}', [CategoryController::class, 'update']);
-    Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
-    Route::post('/categories/{id}/plats', [CategoryController::class, 'attachPlats']);
+    Route::get('/categories/{category}', [CategoryController::class, 'show']);
+    Route::get('/categories/{category}/plates', [CategoryController::class, 'plates']);
 
-    Route::get('/plats', [PlatController::class, 'index']);
-    Route::post('/plats', [PlatController::class, 'store']);
-    Route::get('/plats/{id}', [PlatController::class, 'show']);
-    Route::put('/plats/{id}', [PlatController::class, 'update']);
-    Route::delete('/plats/{id}', [PlatController::class, 'destroy']);
+    Route::get('/plates', [PlateController::class, 'index']);
+    Route::get('/plates/{plate}', [PlateController::class, 'show']);
+
+    Route::post('/recommendations/analyze/{plate_id}', [RecommendationController::class, 'analyze'])
+        ->whereNumber('plate_id');
+    Route::get('/recommendations', [RecommendationController::class, 'index']);
+    Route::get('/recommendations/{plate_id}', [RecommendationController::class, 'show'])
+        ->whereNumber('plate_id');
+
+    Route::middleware('admin')->group(function (): void {
+        Route::get('/admin/stats', [AdminStatsController::class, 'index']);
+
+        Route::post('/categories', [CategoryController::class, 'store']);
+        Route::put('/categories/{category}', [CategoryController::class, 'update']);
+        Route::delete('/categories/{category}', [CategoryController::class, 'destroy']);
+
+        Route::post('/plates', [PlateController::class, 'store']);
+        Route::put('/plates/{plate}', [PlateController::class, 'update']);
+        Route::delete('/plates/{plate}', [PlateController::class, 'destroy']);
+
+        Route::get('/ingredients', [IngredientController::class, 'index']);
+        Route::post('/ingredients', [IngredientController::class, 'store']);
+        Route::put('/ingredients/{ingredient}', [IngredientController::class, 'update']);
+        Route::delete('/ingredients/{ingredient}', [IngredientController::class, 'destroy']);
+    });
 });
