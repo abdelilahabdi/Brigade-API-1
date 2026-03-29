@@ -15,11 +15,13 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->text('description')->nullable();
-            $table->decimal('price',8,2);
-            $table->integer('stock')->default(0);
-            $table->foreignId('category_id')->constrained()->onDelete('cascade');
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->decimal('price', 10, 2);
+            $table->unsignedInteger('stock')->default(0);
+            $table->foreignId('category_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('restaurant_id')->constrained()->cascadeOnDelete();
             $table->timestamps();
+
+            $table->index(['restaurant_id', 'category_id']);
         });
     }
 

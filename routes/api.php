@@ -1,9 +1,9 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\PlatController;
+use Illuminate\Support\Facades\Route;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -17,9 +17,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/categories/{id}', [CategoryController::class, 'show']);
     Route::put('/categories/{id}', [CategoryController::class, 'update']);
     Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
-    Route::post('/categories/{id}/plats', [CategoryController::class, 'assignPlats']);
+    Route::post('/categories/{id}/plats', [CategoryController::class, 'attachPlats']);
 
-    
     Route::get('/plats', [PlatController::class, 'index']);
     Route::post('/plats', [PlatController::class, 'store']);
     Route::get('/plats/{id}', [PlatController::class, 'show']);

@@ -7,19 +7,23 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Category extends Model
+class Restaurant extends Model
 {
     use HasFactory;
 
     protected $fillable = [
         'name',
-        'description',
-        'restaurant_id',
+        'user_id',
     ];
 
-    public function restaurant(): BelongsTo
+    public function user(): BelongsTo
     {
-        return $this->belongsTo(Restaurant::class);
+        return $this->belongsTo(User::class);
+    }
+
+    public function categories(): HasMany
+    {
+        return $this->hasMany(Category::class);
     }
 
     public function plats(): HasMany

@@ -3,102 +3,92 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Category;
+use App\Http\Requests\StorePlatRequest;
+use App\Http\Requests\UpdatePlatRequest;
 use App\Models\Plat;
+use App\Models\Restaurant;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Gate;
 
 class PlatController extends Controller
 {
-    public function index()
+    public function index(Request $request): JsonResponse
     {
-        $plats = Plat::where('user_id', auth()->id())->get();
+        $restaurant = $this->resolveRestaurant($request);
 
-        return response()->json($plats, 200);
-    }
-
-    public function store(Request $request)
-    {
-        Gate::authorize('create', Plat::class);
-
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'price' => 'required|numeric|min:0',
-            'stock' => 'required|integer|min:0',
-            'category_id' => 'required|exists:categories,id',
-        ]);
-
-        $category = Category::findOrFail($validated['category_id']);
-
-        Gate::authorize('view', $category);
-
-        $plat = Plat::create([
-            'name' => $validated['name'],
-            'description' => $validated['description'] ?? null,
-            'price' => $validated['price'],
-            'stock' => $validated['stock'],
-            'category_id' => $validated['category_id'],
-            'user_id' => auth()->id(),
-        ]);
+        $plats = Plat::query()
+            ->where('restaurant_id', $restaurant->id)
+            ->with('category')
+            ->latest()
+            ->get();
 
         return response()->json([
-            'message' => 'Plat créé avec succès',
-            'plat' => $plat,
-        ], 201);
-    }
-
-    public function show(string $id)
-    {
-        $plat = Plat::findOrFail($id);
-
-        Gate::authorize('view', $plat);
-
-        return response()->json($plat, 200);
-    }
-
-    public function update(Request $request, string $id)
-    {
-        $plat = Plat::findOrFail($id);
-
-        Gate::authorize('update', $plat);
-
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'price' => 'required|numeric|min:0',
-            'stock' => 'required|integer|min:0',
-            'category_id' => 'required|exists:categories,id',
-        ]);
-
-        $category = Category::findOrFail($validated['category_id']);
-
-        Gate::authorize('view', $category);
-
-        $plat->update([
-            'name' => $validated['name'],
-            'description' => $validated['description'] ?? null,
-            'price' => $validated['price'],
-            'stock' => $validated['stock'],
-            'category_id' => $validated['category_id'],
-        ]);
-
-        return response()->json([
-            'message' => 'Plat modifié avec succès',
-            'plat' => $plat,
+            'message' => 'Plats recuperes avec succes.',
+            'data' => $plats,
         ], 200);
     }
 
-    public function destroy(string $id)
+    public function store(StorePlatRequest $request): JsonResponse
+    {
+        $restaurant = $this->resolveRestaurant($request);
+
+        $plat = Plat::create([
+            ...$request->validated(),
+            'restaurant_id' => $restaurant->id,
+        ]);
+
+        return response()->json([
+            'message' => 'Plat cree avec succes.',
+            'data' => $plat->load('category'),
+        ], 201);
+    }
+
+    public function show(int $id): JsonResponse
+    {
+        $plat = Plat::with('category')->findOrFail($id);
+        $this->authorize('view', $plat);
+
+        return response()->json([
+            'message' => 'Plat recupere avec succes.',
+            'data' => $plat,
+        ], 200);
+    }
+
+    public function update(UpdatePlatRequest $request, int $id): JsonResponse
     {
         $plat = Plat::findOrFail($id);
+        $this->authorize('update', $plat);
 
-        Gate::authorize('delete', $plat);
+        $plat->update($request->validated());
+
+        return response()->json([
+            'message' => 'Plat mis a jour avec succes.',
+            'data' => $plat->fresh()->load('category'),
+        ], 200);
+    }
+
+    public function destroy(int $id): JsonResponse
+    {
+        $plat = Plat::findOrFail($id);
+        $this->authorize('delete', $plat);
 
         $plat->delete();
 
         return response()->json([
-            'message' => 'Plat supprimé avec succès',
+            'message' => 'Plat supprime avec succes.',
         ], 200);
+    }
+
+    private function resolveRestaurant(Request $request): Restaurant
+    {
+        $restaurant = $request->user()->restaurant;
+
+        if (! $restaurant) {
+            abort(response()->json([
+                'message' => 'Restaurant introuvable pour cet utilisateur.',
+            ], 404));
+        }
+
+        return $restaurant;
     }
 }

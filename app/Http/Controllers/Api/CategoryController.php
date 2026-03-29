@@ -3,113 +3,142 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\AttachPlatsToCategoryRequest;
+use App\Http\Requests\StoreCategoryRequest;
+use App\Http\Requests\UpdateCategoryRequest;
 use App\Models\Category;
+use App\Models\Plat;
+use App\Models\Restaurant;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Gate;
 
 class CategoryController extends Controller
 {
-    public function index()
+    public function index(Request $request): JsonResponse
     {
-        $categories = Category::where('user_id', auth()->id())->get();
+        $restaurant = $this->resolveRestaurant($request);
 
-        return response()->json($categories, 200);
-    }
-
-    public function store(Request $request)
-    {
-        Gate::authorize('create', Category::class);
-
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-        ]);
-
-        $category = Category::create([
-            'name' => $validated['name'],
-            'user_id' => auth()->id(),
-        ]);
+        $categories = Category::query()
+            ->where('restaurant_id', $restaurant->id)
+            ->latest()
+            ->get();
 
         return response()->json([
-            'message' => 'Category créée avec succès',
-            'category' => $category,
-        ], 201);
-    }
-
-    public function show(string $id)
-    {
-        $category = Category::findOrFail($id);
-
-        Gate::authorize('view', $category);
-
-        return response()->json($category, 200);
-    }
-
-    public function update(Request $request, string $id)
-    {
-        $category = Category::findOrFail($id);
-
-        Gate::authorize('update', $category);
-
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-        ]);
-
-        $category->update([
-            'name' => $validated['name'],
-        ]);
-
-        return response()->json([
-            'message' => 'Category modifiée avec succès',
-            'category' => $category,
+            'message' => 'Categories recuperees avec succes.',
+            'data' => $categories,
         ], 200);
     }
 
-    public function destroy(string $id)
+    public function store(StoreCategoryRequest $request): JsonResponse
+    {
+        $restaurant = $this->resolveRestaurant($request);
+
+        $category = Category::create([
+            ...$request->validated(),
+            'restaurant_id' => $restaurant->id,
+        ]);
+
+        return response()->json([
+            'message' => 'Categorie creee avec succes.',
+            'data' => $category,
+        ], 201);
+    }
+
+    public function show(int $id): JsonResponse
     {
         $category = Category::findOrFail($id);
+        $this->authorize('view', $category);
 
-        Gate::authorize('delete', $category);
+        return response()->json([
+            'message' => 'Categorie recuperee avec succes.',
+            'data' => $category,
+        ], 200);
+    }
+
+    public function update(UpdateCategoryRequest $request, int $id): JsonResponse
+    {
+        $category = Category::findOrFail($id);
+        $this->authorize('update', $category);
+
+        $category->update($request->validated());
+
+        return response()->json([
+            'message' => 'Categorie mise a jour avec succes.',
+            'data' => $category->fresh(),
+        ], 200);
+    }
+
+    public function destroy(int $id): JsonResponse
+    {
+        $category = Category::findOrFail($id);
+        $this->authorize('delete', $category);
 
         $category->delete();
 
         return response()->json([
-            'message' => 'Category supprimée avec succès',
+            'message' => 'Categorie supprimee avec succes.',
         ], 200);
     }
 
+    public function attachPlats(AttachPlatsToCategoryRequest $request, int $id): JsonResponse
+    {
+        $restaurant = $this->resolveRestaurant($request);
+        $category = Category::find($id);
 
+        if (! $category) {
+            return response()->json([
+                'message' => 'Categorie introuvable.',
+            ], 404);
+        }
 
-    public function assignPlats(Request $request, string $id)
-{
-    $category = Category::findOrFail($id);
+        $this->authorize('update', $category);
 
-    Gate::authorize('update', $category);
+        $platIds = $request->validated('plat_ids');
 
-    $validated = $request->validate([
-        'plat_ids' => 'required|array|min:1',
-        'plat_ids.*' => 'exists:plats,id',
-    ]);
+        $plats = Plat::query()
+            ->whereIn('id', $platIds)
+            ->get();
 
-    $plats = \App\Models\Plat::whereIn('id', $validated['plat_ids'])
-        ->where('user_id', auth()->id())
-        ->get();
+        $externalPlatIds = $plats
+            ->where('restaurant_id', '!=', $restaurant->id)
+            ->pluck('id')
+            ->values();
 
-    if ($plats->count() !== count($validated['plat_ids'])) {
+        if ($externalPlatIds->isNotEmpty()) {
+            return response()->json([
+                'message' => 'Un ou plusieurs plats ne sont pas autorises pour ce restaurant.',
+                'invalid_plat_ids' => $externalPlatIds->all(),
+            ], 403);
+        }
+
+        Plat::query()
+            ->whereIn('id', $platIds)
+            ->update(['category_id' => $category->id]);
+
+        $updatedPlats = Plat::query()
+            ->whereIn('id', $platIds)
+            ->with('category')
+            ->get();
+
         return response()->json([
-            'message' => 'Un ou plusieurs plats sont introuvables ou ne vous appartiennent pas'
-        ], 403);
+            'message' => 'Plats associes a la categorie avec succes.',
+            'data' => [
+                'category' => $category->fresh(),
+                'plats' => $updatedPlats,
+            ],
+        ], 200);
     }
 
-    foreach ($plats as $plat) {
-        $plat->update([
-            'category_id' => $category->id,
-        ]);
-    }
+    private function resolveRestaurant(Request $request): Restaurant
+    {
+        $restaurant = $request->user()->restaurant;
 
-    return response()->json([
-        'message' => 'Plats associés à la catégorie avec succès',
-        'category' => $category,
-        'plats' => $plats,
-    ], 200);
-}
+        if (! $restaurant) {
+            abort(response()->json([
+                'message' => 'Restaurant introuvable pour cet utilisateur.',
+            ], 404));
+        }
+
+        return $restaurant;
+    }
 }
